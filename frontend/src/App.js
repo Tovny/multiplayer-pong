@@ -6,7 +6,6 @@ import { Score } from "./components/game/Score";
 import { Header } from "./components/menu/Header";
 import { Instructions } from "./components/menu/Instructions";
 import { fromEvent, interval, tap } from "rxjs";
-import * as R from "ramda";
 import { betweenPoints } from "./utils/between-points";
 import {
   BALL_RADIUS,
@@ -15,21 +14,18 @@ import {
   PADDLE_WIDTH,
 } from "./constants/constants";
 
-const gameStartHeight = R.subtract(
-  R.divide(window.innerHeight, 2),
-  PADDLE_HEIGHT
-);
-
+const gameStartHeight = window.innerHeight / 2 - PADDLE_HEIGHT / 2;
+const halfBallRadius = BALL_RADIUS / 2;
 const initialState = {
-  ballY: Math.floor(window.innerHeight / 2),
-  ballX: Math.floor(window.innerWidth / 2),
+  ballY: Math.floor(window.innerHeight / 2 - halfBallRadius),
+  ballX: Math.floor(window.innerWidth / 2 - halfBallRadius),
   vx: 2 * (Math.random() < 0.5 ? 1 : -1),
   vy: 2 * (Math.random() < 0.5 ? 1 : -1),
   boardBoundsRight: window.innerWidth + 10,
   leftScore: 0,
   rightScore: 0,
   leftPaddleTop: gameStartHeight,
-  rightPaddleTop: 15,
+  rightPaddleTop: gameStartHeight,
 };
 
 function reducer(state, action) {
@@ -44,68 +40,65 @@ function reducer(state, action) {
       break;
     default:
       state.ballX = state.ballX + state.vx;
-      if (
-        state.ballX <= PADDLE_WIDTH &&
-        betweenPoints(
-          state.ballY,
-          state.leftPaddleTop,
-          state.leftPaddleTop + PADDLE_HEIGHT
-        )
-      ) {
+      state.ballY = state.ballY + state.vy;
+
+      const betweenLeftPaddle = betweenPoints(
+        state.ballY,
+        state.leftPaddleTop,
+        state.leftPaddleTop + PADDLE_HEIGHT
+      );
+
+      if (state.ballX <= PADDLE_WIDTH && betweenLeftPaddle) {
         state.ballX = PADDLE_WIDTH;
-        state.vx = R.negate(state.vx);
+        state.vx = -state.vx;
         return { ...state };
       }
+
+      const betweenRightPaddle = betweenPoints(
+        state.ballX,
+        state.rightPaddleTop,
+        state.rightPaddleTop + PADDLE_HEIGHT
+      );
+
       if (
         state.ballX >= window.innerWidth - PADDLE_WIDTH &&
-        betweenPoints(
-          state.ballX,
-          state.rightPaddleTop,
-          state.rightPaddleTop + PADDLE_HEIGHT
-        )
+        betweenRightPaddle
       ) {
         state.ballX = window.innerWidth - PADDLE_WIDTH;
-        state.vx = R.negate(state.vx);
+        state.vx = -state.vx;
         return { ...state };
       }
 
       if (state.ballX <= 0) {
         state.ballX = 0;
-        state.vx = R.negate(state.vx);
-        if (
-          state.rightScore < MAX_SCORE &&
-          !betweenPoints(
-            state.ballY,
-            state.leftPaddleTop,
-            state.leftPaddleTop + PADDLE_HEIGHT
-          )
-        ) {
+        state.vx = -state.vx;
+
+        if (state.rightScore < MAX_SCORE && !betweenLeftPaddle) {
           state.rightScore = state.rightScore + 1;
         }
       }
 
-      if (state.ballX >= window.innerWidth - BALL_RADIUS) {
-        state.ballX = window.innerWidth - BALL_RADIUS;
-        state.vx = R.negate(state.vx);
-        if (
-          state.leftScore < 11 &&
-          !betweenPoints(
-            state.ballY,
-            state.rightPaddleTop,
-            state.rightPaddleTop + PADDLE_HEIGHT
-          )
-        ) {
+      const rightBound = window.innerWidth - BALL_RADIUS;
+
+      if (state.ballX >= rightBound) {
+        state.ballX = rightBound;
+        state.vx = -state.vx;
+
+        if (state.leftScore < 11 && !betweenRightPaddle) {
           state.leftScore = state.leftScore + 1;
         }
       }
-      state.ballY = state.ballY + state.vy;
+
       if (state.ballY <= 0) {
         state.ballY = 0;
-        state.vy = R.negate(state.vy);
+        state.vy = -state.vy;
       }
-      if (state.ballY >= window.innerHeight - BALL_RADIUS) {
-        state.ballY = window.innerHeight - BALL_RADIUS;
-        state.vy = R.negate(state.vy);
+
+      const bottomBound = window.innerHeight - BALL_RADIUS;
+
+      if (state.ballY >= bottomBound) {
+        state.ballY = bottomBound;
+        state.vy = -state.vy;
       }
   }
 
@@ -204,7 +197,7 @@ export function App() {
         <div className="vl" />
         <Ball x={ballX} y={ballY} ref={ballRef} />
         <Paddle
-          x={R.subtract(boardBoundsRight, 30)}
+          x={boardBoundsRight - BALL_RADIUS}
           y={rightPaddleTop}
           position="right"
           ref={rightPaddleRef}
