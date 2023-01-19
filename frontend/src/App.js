@@ -16,15 +16,14 @@ import {
 import { webSocket } from "rxjs/webSocket";
 
 const initialState = {
-  ballY: 50,
+  ballY: 50 - Math.random() * 20,
   ballX: 50,
-  vx: 2 * (Math.random() < 0.5 ? 1 : -1),
-  vy: 2 * (Math.random() < 0.5 ? 1 : -1),
-  boardBoundsRight: window.innerWidth + 10,
+  vx: 0.25 * (Math.random() < 0.5 ? 1 : -1),
+  vy: 0.5 * (Math.random() < 0.5 ? 1 : -1),
   leftScore: 0,
   rightScore: 0,
-  leftPaddleTop: 50,
-  rightPaddleTop: 50,
+  leftPaddleTop: 50 - PADDLE_HEIGHT / 2,
+  rightPaddleTop: 50 - PADDLE_HEIGHT / 2,
 };
 
 function updateReducer(state, payload) {
@@ -34,9 +33,9 @@ function updateReducer(state, payload) {
   return { ...state, ...payload };
 }
 
-const updatePaddle = (current, change, height) => {
-  const newPos = current + (change * 100) / height;
-  const max = ((height - PADDLE_HEIGHT) * 100) / height;
+const updatePaddle = (current, change) => {
+  const newPos = current + change;
+  const max = 100 - PADDLE_HEIGHT;
   if (newPos <= 0) {
     return 0;
   }
@@ -48,30 +47,17 @@ const updatePaddle = (current, change, height) => {
 
 function reducer(state, action) {
   switch (action?.type) {
-    case "courtRef":
-      state.courtRef = action.payload;
-      break;
     case "reset":
-      return { courtRef: state.courtRef, ...initialState };
+      return { ...initialState };
     case "leftPaddle":
-      state.leftPaddleTop = updatePaddle(
-        state.leftPaddleTop,
-        action.payload,
-        state.courtRef.clientHeight
-      );
+      state.leftPaddleTop = updatePaddle(state.leftPaddleTop, action.payload);
       break;
     case "rightPaddle":
-      state.rightPaddleTop = updatePaddle(
-        state.rightPaddleTop,
-        action.payload,
-        state.courtRef.clientHeight
-      );
+      state.rightPaddleTop = updatePaddle(state.rightPaddleTop, action.payload);
       break;
     default:
-      const { clientWidth, clientHeight } = state.courtRef;
-      state.court = action.payload;
-      state.ballX = state.ballX + (state.vx * 100) / clientWidth;
-      state.ballY = state.ballY + (state.vy * 100) / clientHeight;
+      state.ballX = state.ballX + state.vx;
+      state.ballY = state.ballY + state.vy;
 
       const leftPaddleStart = PADDLE_WIDTH;
       if (state.ballX <= leftPaddleStart) {
@@ -106,7 +92,6 @@ function reducer(state, action) {
         state.vx = -state.vx;
 
         if (state.rightScore < MAX_SCORE) {
-          console.log("tuu");
           state.rightScore = state.rightScore + 1;
         }
       }
@@ -139,8 +124,6 @@ function reducer(state, action) {
 }
 
 export function App() {
-  const courtRef = useRef(null);
-  const boardBoundsRight = courtRef.current?.clientHeight + 10;
   const [hasGameStarted, setHasGameStarted] = useState(false);
   const [showInstructions, setShowInstructions] = useState(true);
   const [level, setLevel] = useState(0);
@@ -160,7 +143,6 @@ export function App() {
   const [host, setHost] = useState(!window.chrome);
 
   useEffect(() => {
-    dispatch({ type: "courtRef", payload: courtRef.current });
     const subject = webSocket("ws://localhost:5000");
     setSubject(subject);
     subject.subscribe((data) => {
@@ -196,16 +178,12 @@ export function App() {
   }, [rpt]);
 
   const onKeydown = (evt) => {
-    const change = 15;
+    const change = 2;
     const type = host ? "leftPaddle" : "rightPaddle";
-    if (evt.key === "ArrowUp" && leftPaddleRef.current.offsetTop > 0) {
+    if (evt.key === "ArrowUp") {
       return dispatch({ type: type, payload: -change });
     }
-    if (
-      evt.key === "ArrowDown" &&
-      leftPaddleRef.current.offsetTop + PADDLE_HEIGHT <
-        courtRef.current?.clientHeight
-    ) {
+    if (evt.key === "ArrowDown") {
       dispatch({ type: type, payload: change });
     }
   };
@@ -220,7 +198,7 @@ export function App() {
     interval(1)
       .pipe(
         tap(() => {
-          dispatch({ payload: courtRef.current });
+          dispatch();
         })
       )
       .subscribe();
@@ -252,7 +230,7 @@ export function App() {
 
   return (
     <div className="App">
-      <div className="Game" ref={courtRef}>
+      <div className="Game">
         <Header
           level={level}
           onClick={startButtonHandler}
@@ -272,12 +250,7 @@ export function App() {
         />
         <div className="vl" />
         <Ball x={ballX} y={ballY} ref={ballRef} />
-        <Paddle
-          x={boardBoundsRight - BALL_RADIUS}
-          y={rightPaddleTop}
-          position="right"
-          ref={rightPaddleRef}
-        />
+        <Paddle y={rightPaddleTop} position="right" ref={rightPaddleRef} />
       </div>
     </div>
   );
