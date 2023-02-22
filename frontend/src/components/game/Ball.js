@@ -12,6 +12,7 @@ export const Ball = forwardRef(({ x, y }, ref) => {
         backgroundColor: "white",
         aspectRatio: 1,
         borderRadius: "50%",
+        transition: "all 50ms linear",
       }}
       className="PongBall"
       ref={ref}

@@ -14,10 +14,11 @@ import {
   PADDLE_WIDTH,
 } from "./constants/constants";
 import { webSocket } from "rxjs/webSocket";
+import { Players } from "./components/menu/Players";
 
 const initialState = {
   ballY: 50 - Math.random() * 20,
-  ballX: 50,
+  ballX: 50 - BALL_RADIUS / 2,
   vx: 0.25 * (Math.random() < 0.5 ? 1 : -1),
   vy: 0.5 * (Math.random() < 0.5 ? 1 : -1),
   leftScore: 0,
@@ -128,80 +129,76 @@ export function App() {
   const [showInstructions, setShowInstructions] = useState(true);
   const [level, setLevel] = useState(0);
   const [isGameOver, setIsGameOver] = useState(false);
+  // const [
+  //   { leftPaddleTop: lpu, rightPaddleTop: rpt, ballX: bxu, ballY: byu },
+  //   dispatch,
+  // ] = useReducer(reducer, initialState);
   const [
-    { leftPaddleTop: lpu, rightPaddleTop: rpt, ballX: bxu, ballY: byu },
-    dispatch,
-  ] = useReducer(reducer, initialState);
-  const [
-    { leftScore, rightScore, leftPaddleTop, rightPaddleTop, ballX, ballY },
+    {
+      leftScore,
+      rightScore,
+      leftPaddleY: leftPaddleTop,
+      rightPaddleY: rightPaddleTop,
+      ballX,
+      ballY,
+    },
     dispatch2,
   ] = useReducer(updateReducer, initialState);
   const leftPaddleRef = useRef(null);
   const rightPaddleRef = useRef(null);
   const ballRef = useRef(null);
   const [subject, setSubject] = useState();
-  const [host, setHost] = useState(!window.chrome);
+  const [host, setHost] = useState(true);
+  const [players, setPlayers] = useState([]);
+  const [requestId, setRequestId] = useState();
 
   useEffect(() => {
-    const subject = webSocket("ws://localhost:5000");
+    const subject = webSocket("ws://localhost:5282");
     setSubject(subject);
     subject.subscribe((data) => {
-      if (data.type === "start") {
+      if (data.action === "playerUpdate") {
+        setPlayers(data.payload);
+      }
+      if (data.action === "gameRequest") {
+        setRequestId(data.payload);
+      }
+      if (data.action === "startGame") {
         startButtonHandler();
       }
-      if (data.payload) {
-        dispatch2(data.payload);
+      if (data.ballX) {
+        dispatch2(data);
       }
     });
   }, []);
 
-  useEffect(() => {
-    if (host) {
-      subject?.next({
-        action: "update",
-        payload: {
-          ballX: bxu,
-          ballY: byu,
-          leftPaddleTop: lpu,
-        },
-      });
-    }
-  }, [bxu, byu, lpu]);
+  const [paddleUpdate, setPaddleUpdate] = useState();
 
-  useEffect(() => {
-    subject?.next({
-      action: "update",
-      payload: {
-        rightPaddleTop: rpt,
-      },
-    });
-  }, [rpt]);
-
-  const onKeydown = (evt) => {
+  const onKeydown = (evt, subject) => {
     const change = 2;
-    const type = host ? "leftPaddle" : "rightPaddle";
+    const type = host ? "leftPaddleChange" : "rightPaddleChange";
     if (evt.key === "ArrowUp") {
-      return dispatch({ type: type, payload: -change });
+      setPaddleUpdate(-change);
     }
     if (evt.key === "ArrowDown") {
-      dispatch({ type: type, payload: change });
+      setPaddleUpdate(change);
     }
   };
 
+  useEffect(() => {
+    if (paddleUpdate) {
+      const type = host ? "leftPaddleChange" : "rightPaddleChange";
+      console.log({ paddle: paddleUpdate, action: type });
+      subject?.next({ paddle: paddleUpdate, action: type });
+      setPaddleUpdate(undefined);
+    }
+  }, [paddleUpdate]);
+
   const startButtonHandler = () => {
-    dispatch({ type: "reset" });
     setHasGameStarted(true);
     startGame();
   };
 
   const startGame = () => {
-    interval(1)
-      .pipe(
-        tap(() => {
-          dispatch();
-        })
-      )
-      .subscribe();
     fromEvent(document, "keydown")
       .pipe(
         tap((e) => {
@@ -228,8 +225,28 @@ export function App() {
     );
   };
 
+  const sendGameRequest = (id) => {
+    subject?.next({
+      action: "gameRequest",
+      payload: id,
+    });
+  };
+
+  const acceptGameRequest = () => {
+    subject?.next({
+      action: "acceptGameRequest",
+      payload: requestId,
+    });
+    setHost(false);
+    setRequestId(undefined);
+  };
+
   return (
     <div className="App">
+      {requestId && (
+        <button onClick={acceptGameRequest}>Accept game request</button>
+      )}
+      <Players players={players} handleClick={sendGameRequest} />
       <div className="Game">
         <Header
           level={level}
