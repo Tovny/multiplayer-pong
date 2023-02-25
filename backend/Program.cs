@@ -1,132 +1,96 @@
-using Newtonsoft.Json;
-using WebSocketSharp;
-using WebSocketSharp.Server;
-using MongoDB.Driver;
-using MongoDB.Bson;
+using System.Net;
+using System.Net.WebSockets;
+using System.Text;
+using System.Text.Json;
+
+var builder = WebApplication.CreateBuilder(args);
+var app = builder.Build();
+
+System.Collections.Concurrent.ConcurrentDictionary<System.Guid, WebSocket> sockets = new System.Collections.Concurrent.ConcurrentDictionary<System.Guid, WebSocket>();
+
+app.UseWebSockets();
+app.Map("/", async context =>
+{
+    if (context.WebSockets.IsWebSocketRequest)
+    {
+        var uuid = System.Guid.NewGuid();
+        using var webSocket = await context.WebSockets.AcceptWebSocketAsync();
+        var rand = new Random();
+
+        sockets.TryAdd(uuid, webSocket);
+
+        var socketIds = sockets.ToArray().Select(socket => socket.Key);
+
+        foreach (System.Collections.Generic.KeyValuePair<System.Guid, System.Net.WebSockets.WebSocket> socket in sockets.ToArray())
+        {
+            var data = JsonSerializer.SerializeToUtf8Bytes(new { action = "playerUpdate", payload = socketIds });
+            await socket.Value.SendAsync(data, WebSocketMessageType.Text,
+                true, CancellationToken.None);
+        }
 
 
-var wss = new WebSocketServer(5282);
-wss.AddWebSocketService<Echo>("/");
-wss.Start();
-var db = new Database.DB();
-await db.FindOrCreateUser("ka je");
-Console.ReadKey(true);
-wss.Stop();
+        while (webSocket.State == WebSocketState.Open)
+        {
+            var buffer = WebSocket.CreateClientBuffer(1024, 16);
+            var msg = await webSocket.ReceiveAsync(buffer, CancellationToken.None);
 
+            if (msg.MessageType == WebSocketMessageType.Close)
+            {
+                await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, null, CancellationToken.None);
+                sockets.TryRemove(uuid, out var oldSocket);
+            }
 
+            using (var stream = new MemoryStream())
+            {
+                stream.Write(buffer.Array, buffer.Offset, msg.Count);
+                var msgString = Encoding.UTF8.GetString(stream.ToArray());
+                var decoded = JsonSerializer.Deserialize<IFFF>(msgString);
 
+                if (decoded?.action == "gameRequest" && decoded.payload != null)
+                {
+                    var data = JsonSerializer.SerializeToUtf8Bytes(new { action = "gameRequest", payload = uuid.ToString() });
+                    await sockets[new Guid(decoded.payload)].SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None);
+                }
+
+                if (decoded?.action == "acceptGameRequest" && decoded.payload != null)
+                {
+                    var opponentSocket = sockets[new Guid(decoded.payload)];
+                    Game.Game game = new Game.Game(uuid.ToString(), decoded.payload, async void (Game.GameData gameData) =>
+                    {
+                        var data = JsonSerializer.SerializeToUtf8Bytes(gameData);
+                        await webSocket.SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None);
+                        await opponentSocket.SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None);
+                    });
+
+                    var data = JsonSerializer.SerializeToUtf8Bytes(new { action = "startGame" });
+                    await opponentSocket.SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None);
+                    await webSocket.SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None);
+                }
+
+                if (decoded?.action == "leftPaddleChange")
+                {
+                    Game.ActiveGames.games[uuid.ToString()].UpdateLeftPaddle(decoded.paddle);
+                }
+
+                if (decoded?.action == "rightPaddleChange")
+                {
+                    Game.ActiveGames.games[uuid.ToString()].UpdateRightPaddle(decoded.paddle);
+                }
+            }
+        }
+
+    }
+    else
+    {
+        context.Response.StatusCode = (int)HttpStatusCode.BadRequest;
+    }
+});
+
+app.Run("http://localhost:5282");
 
 class IFFF
 {
-    public string action;
-    public string payload;
-    public double paddle;
-}
-
-
-class Echo : WebSocketBehavior
-{
-
-
-
-    private string? opponent;
-
-    protected override void OnOpen()
-    {
-        base.OnOpen();
-        BroadcastPlayers();
-    }
-
-    protected override void OnMessage(MessageEventArgs e)
-    {
-        var msg = JsonConvert.DeserializeObject<IFFF>(e.Data);
-        if (msg.action == "gameRequest" && msg.payload != null)
-        {
-            Sessions.SendTo(JsonConvert.SerializeObject(new { action = "gameRequest", payload = ID }), msg.payload);
-        }
-        if (msg.action == "acceptGameRequest" && msg.payload != null)
-        {
-
-
-            opponent = msg.payload;
-            Game.Game game = new Game.Game(ID, msg.payload, UpdateGame);
-
-            Sessions.SendTo(JsonConvert.SerializeObject(new { action = "startGame" }), msg.payload);
-            Send(JsonConvert.SerializeObject(new { action = "startGame" }));
-        }
-        if (msg.action == "leftPaddleChange")
-        {
-            Game.ActiveGames.games[ID].UpdateLeftPaddle(msg.paddle);
-        }
-        if (msg.action == "rightPaddleChange")
-        {
-            Game.ActiveGames.games[ID].UpdateRightPaddle(msg.paddle);
-        }
-    }
-
-    protected override void OnClose(CloseEventArgs e)
-    {
-        base.OnClose(e);
-        BroadcastPlayers();
-        // Game.ActiveGames.games[ID].
-    }
-
-    private void BroadcastPlayers()
-    {
-        Sessions.Broadcast(JsonConvert.SerializeObject(new { action = "playerUpdate", payload = Sessions.ActiveIDs }));
-    }
-
-    private void UpdateGame(GameData data)
-    {
-        using var memoryStream = new MemoryStream();
-        using var writer = new StreamWriter(memoryStream);
-        var jsonText = JsonConvert.SerializeObject(data);
-        Send(jsonText);
-        Sessions.SendTo(jsonText, opponent);
-    }
-}
-
-class IPayload
-{
-    public double ballX;
-
-
-}
-
-class Iffs
-{
     public string action { get; set; }
-    public IPayload payload { get; set; }
-    public Guid? id { get; set; }
-}
-
-class GameData
-{
-    public double ballX { get; set; }
-    public double ballY { get; set; }
-    public int leftScore { get; set; }
-    public int rightScore { get; set; }
-    public double leftPaddleY { get; set; }
-    public double rightPaddleY { get; set; }
-
-    public GameData(double ballX, double ballY, int leftScore, int rightScore, double leftPaddleY, double rightPaddleY)
-    {
-        this.ballX = ballX;
-        this.ballY = ballY;
-        this.leftScore = leftScore;
-        this.rightScore = rightScore;
-        this.leftPaddleY = leftPaddleY;
-        this.rightPaddleY = rightPaddleY;
-    }
-}
-
-
-class SendId
-{
-    public Guid id { get; set; }
-    public string type = "id";
-    public SendId(Guid id)
-    {
-        this.id = id;
-    }
+    public string payload { get; set; }
+    public double paddle { get; set; }
 }
