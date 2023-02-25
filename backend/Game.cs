@@ -12,6 +12,26 @@ namespace Game
         }
     }
 
+    class GameData
+    {
+        public double ballX { get; set; }
+        public double ballY { get; set; }
+        public int leftScore { get; set; }
+        public int rightScore { get; set; }
+        public double leftPaddleY { get; set; }
+        public double rightPaddleY { get; set; }
+
+        public GameData(double ballX, double ballY, int leftScore, int rightScore, double leftPaddleY, double rightPaddleY)
+        {
+            this.ballX = ballX;
+            this.ballY = ballY;
+            this.leftScore = leftScore;
+            this.rightScore = rightScore;
+            this.leftPaddleY = leftPaddleY;
+            this.rightPaddleY = rightPaddleY;
+        }
+    }
+
     class Game
     {
         private static int PADDLE_HEIGHT = 15;
@@ -29,6 +49,9 @@ namespace Game
         public string? winner;
         private int yBound = 200;
         private Action<GameData> updateCallback;
+        private string player1;
+        private string player2;
+        private bool stop = false;
 
         public Game(string player1, string player2, Action<GameData> updateCallback)
         {
@@ -36,6 +59,8 @@ namespace Game
             this.StartGame();
             ActiveGames.games.TryAdd(player1, this);
             ActiveGames.games.TryAdd(player2, this);
+            this.player1 = player1;
+            this.player2 = player2;
         }
 
         public void UpdateLeftPaddle(double change)
@@ -51,9 +76,7 @@ namespace Game
         private async void StartGame()
         {
             while (this.leftScore < this.MAX_SCORE &&
-            this.rightScore < this.MAX_SCORE //&&
-            // sessions.ActiveIDs.Contains(player1) &&
-            // sessions.ActiveIDs.Contains(player2))
+            this.rightScore < this.MAX_SCORE && !stop
             )
             {
 
@@ -146,7 +169,10 @@ namespace Game
 
         public void Stop()
         {
-
+            stop = true;
+            Game game;
+            ActiveGames.games.TryRemove(player1, out game);
+            ActiveGames.games.TryRemove(player2, out game);
         }
 
         private GameData generateData()
@@ -161,6 +187,11 @@ namespace Game
                 return false;
             }
             return true;
+        }
+
+        public void Close()
+        {
+
         }
     }
 }
