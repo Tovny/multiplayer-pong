@@ -1,6 +1,9 @@
 using System.Collections.Concurrent;
+using backend.Controllers;
 
-class GameData
+namespace backend.Models;
+
+public class GameData
 {
     public double ballX { get; set; }
     public double ballY { get; set; }
@@ -22,7 +25,7 @@ class GameData
     }
 }
 
-class Game
+public class Game
 {
     public static ConcurrentDictionary<Guid, Game> ActiveGames = new ConcurrentDictionary<Guid, Game>();
     private static int PADDLE_HEIGHT = 15;
@@ -41,14 +44,12 @@ class Game
     private int yBound = 200;
     private Guid player1;
     private Guid player2;
-    private Action<GameData> updateCallback;
     private bool gameStopped = false;
 
-    public Game(Guid player1, Guid player2, Action<GameData> updateCallback)
+    public Game(Guid player1, Guid player2)
     {
         this.player1 = player1;
         this.player2 = player2;
-        this.updateCallback = updateCallback;
         this.StartGame();
     }
 
@@ -75,7 +76,7 @@ class Game
         {
             await Task.Delay(30);
             var data = Update();
-            updateCallback(data);
+            WebsocketController.HandleGameUpdate(data, player1, player2);
         }
 
     }

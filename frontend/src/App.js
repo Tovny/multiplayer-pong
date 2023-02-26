@@ -36,7 +36,7 @@ export function App() {
   const [requestId, setRequestId] = useState();
 
   useEffect(() => {
-    const subject = webSocket("ws://localhost:5282");
+    const subject = webSocket("ws://localhost:5125");
     setSubject(subject);
     subject.subscribe((data) => {
       if (data.action === "playerUpdate") {
