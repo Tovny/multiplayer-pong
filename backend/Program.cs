@@ -20,11 +20,11 @@ app.Map("/", async context =>
 
         Sockets.TryAdd(uuid, webSocket);
 
-        var socketIds = Sockets.ToArray().Select(socket => socket.Key);
+        var socketIds = Sockets.Select(socket => socket.Key);
 
-        foreach (System.Collections.Generic.KeyValuePair<System.Guid, System.Net.WebSockets.WebSocket> socket in Sockets.ToArray())
+        foreach (System.Collections.Generic.KeyValuePair<System.Guid, System.Net.WebSockets.WebSocket> socket in Sockets)
         {
-            var data = JsonSerializer.SerializeToUtf8Bytes(new { action = "playerUpdate", payload = socketIds });
+            var data = JsonSerializer.SerializeToUtf8Bytes(new { action = "playerUpdate", payload = socketIds.Where(s => s != socket.Key) });
             await socket.Value.SendAsync(data, WebSocketMessageType.Text,
                 true, CancellationToken.None);
         }
