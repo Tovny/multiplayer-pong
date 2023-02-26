@@ -6,8 +6,5 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Json.Net" Version="1.0.33" />
-    <PackageReference Include="MongoDB.Driver" Version="2.19.0" />
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.2" />
-    <PackageReference Include="WebSocketSharp" Version="1.0.3-rc11" />
   </ItemGroup>
 </Project>

@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.WebSockets;
 using System.Text;
@@ -6,7 +7,7 @@ using System.Text.Json;
 var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
 
-System.Collections.Concurrent.ConcurrentDictionary<System.Guid, WebSocket> sockets = new System.Collections.Concurrent.ConcurrentDictionary<System.Guid, WebSocket>();
+ConcurrentDictionary<System.Guid, WebSocket> Sockets = new ConcurrentDictionary<System.Guid, WebSocket>();
 
 app.UseWebSockets();
 app.Map("/", async context =>
@@ -17,17 +18,16 @@ app.Map("/", async context =>
         using var webSocket = await context.WebSockets.AcceptWebSocketAsync();
         var rand = new Random();
 
-        sockets.TryAdd(uuid, webSocket);
+        Sockets.TryAdd(uuid, webSocket);
 
-        var socketIds = sockets.ToArray().Select(socket => socket.Key);
+        var socketIds = Sockets.ToArray().Select(socket => socket.Key);
 
-        foreach (System.Collections.Generic.KeyValuePair<System.Guid, System.Net.WebSockets.WebSocket> socket in sockets.ToArray())
+        foreach (System.Collections.Generic.KeyValuePair<System.Guid, System.Net.WebSockets.WebSocket> socket in Sockets.ToArray())
         {
             var data = JsonSerializer.SerializeToUtf8Bytes(new { action = "playerUpdate", payload = socketIds });
             await socket.Value.SendAsync(data, WebSocketMessageType.Text,
                 true, CancellationToken.None);
         }
-
 
         while (webSocket.State == WebSocketState.Open)
         {
@@ -37,45 +37,52 @@ app.Map("/", async context =>
             if (msg.MessageType == WebSocketMessageType.Close)
             {
                 await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, null, CancellationToken.None);
-                sockets.TryRemove(uuid, out var oldSocket);
+                Sockets.TryRemove(uuid, out var oldSocket);
             }
 
             using (var stream = new MemoryStream())
             {
-                stream.Write(buffer.Array, buffer.Offset, msg.Count);
-                var msgString = Encoding.UTF8.GetString(stream.ToArray());
-                var decoded = JsonSerializer.Deserialize<IFFF>(msgString);
-
-                if (decoded?.action == "gameRequest" && decoded.payload != null)
+                try
                 {
-                    var data = JsonSerializer.SerializeToUtf8Bytes(new { action = "gameRequest", payload = uuid.ToString() });
-                    await sockets[new Guid(decoded.payload)].SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None);
-                }
+                    stream.Write(buffer.Array, buffer.Offset, msg.Count);
+                    var msgString = Encoding.UTF8.GetString(stream.ToArray());
+                    var decoded = JsonSerializer.Deserialize<Payload>(msgString);
 
-                if (decoded?.action == "acceptGameRequest" && decoded.payload != null)
-                {
-                    var opponentSocket = sockets[new Guid(decoded.payload)];
-                    Game.Game game = new Game.Game(uuid.ToString(), decoded.payload, async void (Game.GameData gameData) =>
+                    if (decoded?.action == "gameRequest" && decoded.payload != null)
                     {
-                        var data = JsonSerializer.SerializeToUtf8Bytes(gameData);
-                        await webSocket.SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None);
+                        var data = JsonSerializer.SerializeToUtf8Bytes(new { action = "gameRequest", payload = uuid.ToString() });
+                        await Sockets[new Guid(decoded.payload)].SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None);
+                    }
+
+                    if (decoded?.action == "acceptGameRequest" && decoded.payload != null)
+                    {
+                        var opponentSocket = Sockets[new Guid(decoded.payload)];
+                        Game game = new Game(uuid, new Guid(decoded.payload), async void (GameData gameData) =>
+                        {
+                            if (webSocket.State == WebSocketState.Open && opponentSocket.State == WebSocketState.Open)
+                            {
+                                var data = JsonSerializer.SerializeToUtf8Bytes(gameData);
+                                await webSocket.SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None);
+                                await opponentSocket.SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None);
+                            }
+                        });
+
+                        var data = JsonSerializer.SerializeToUtf8Bytes(new { action = "startGame" });
                         await opponentSocket.SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None);
-                    });
+                        await webSocket.SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None);
+                    }
 
-                    var data = JsonSerializer.SerializeToUtf8Bytes(new { action = "startGame" });
-                    await opponentSocket.SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None);
-                    await webSocket.SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None);
-                }
+                    if (decoded?.action == "leftPaddleChange")
+                    {
+                        Game.ActiveGames[uuid].UpdatePaddle("left", decoded.paddle);
+                    }
 
-                if (decoded?.action == "leftPaddleChange")
-                {
-                    Game.ActiveGames.games[uuid.ToString()].UpdateLeftPaddle(decoded.paddle);
+                    if (decoded?.action == "rightPaddleChange")
+                    {
+                        Game.ActiveGames[uuid].UpdatePaddle("", decoded.paddle);
+                    }
                 }
-
-                if (decoded?.action == "rightPaddleChange")
-                {
-                    Game.ActiveGames.games[uuid.ToString()].UpdateRightPaddle(decoded.paddle);
-                }
+                catch { }
             }
         }
 
@@ -88,7 +95,7 @@ app.Map("/", async context =>
 
 app.Run("http://localhost:5282");
 
-class IFFF
+class Payload
 {
     public string action { get; set; }
     public string payload { get; set; }
