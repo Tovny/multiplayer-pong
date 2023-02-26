@@ -82,7 +82,10 @@ app.Map("/", async context =>
                         Game.ActiveGames[uuid].UpdatePaddle("", decoded.paddle);
                     }
                 }
-                catch { }
+                catch (Exception err)
+                {
+                    Console.WriteLine(err);
+                }
             }
         }
 
