@@ -1,8 +1,8 @@
 namespace backend.Models;
 
-class Payload
+class IPayload
 {
-    public string action { get; set; }
-    public string payload { get; set; }
+    public string action { get; set; } = string.Empty;
+    public string payload { get; set; } = string.Empty;
     public double paddle { get; set; }
 }

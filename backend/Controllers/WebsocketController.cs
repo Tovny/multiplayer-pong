@@ -63,28 +63,31 @@ public class WebsocketController : Controller
 
     private async Task HandleMessage(ArraySegment<byte> buffer, int count)
     {
-        using (var stream = new MemoryStream())
+        if (buffer.Array != null)
         {
             try
             {
-                stream.Write(buffer.Array, buffer.Offset, count);
-                var msgString = Encoding.UTF8.GetString(stream.ToArray());
-                var decoded = JsonSerializer.Deserialize<Payload>(msgString);
-
-                switch (decoded?.action)
+                using (var stream = new MemoryStream())
                 {
-                    case "gameRequest":
-                        await HandleGameRequest(decoded.payload);
-                        break;
-                    case "acceptGameRequest":
-                        await HandleAcceptGameRequest(decoded.payload);
-                        break;
-                    case "leftPaddleChange":
-                        Game.ActiveGames[Uuid].UpdatePaddle("left", decoded.paddle);
-                        break;
-                    case "rightPaddleChange":
-                        Game.ActiveGames[Uuid].UpdatePaddle("", decoded.paddle);
-                        break;
+                    stream.Write(buffer.Array, buffer.Offset, count);
+                    var msgString = Encoding.UTF8.GetString(stream.ToArray());
+                    var decoded = JsonSerializer.Deserialize<IPayload>(msgString);
+
+                    switch (decoded?.action)
+                    {
+                        case "gameRequest":
+                            await HandleGameRequest(decoded.payload);
+                            break;
+                        case "acceptGameRequest":
+                            await HandleAcceptGameRequest(decoded.payload);
+                            break;
+                        case "leftPaddleChange":
+                            Game.ActiveGames[Uuid].UpdatePaddle("left", decoded.paddle);
+                            break;
+                        case "rightPaddleChange":
+                            Game.ActiveGames[Uuid].UpdatePaddle("", decoded.paddle);
+                            break;
+                    }
                 }
             }
             catch (Exception err)
@@ -106,8 +109,11 @@ public class WebsocketController : Controller
         ActiveGame = new Game(Uuid, new Guid(payload));
 
         var data = JsonSerializer.SerializeToUtf8Bytes(new { action = "startGame" });
-        await OpponentSocket.SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None);
-        await Socket.SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None);
+        if (Socket != null)
+        {
+            await OpponentSocket.SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None);
+            await Socket.SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None);
+        }
     }
 
     public static async void HandleGameUpdate(GameData gameData, Guid player1, Guid player2)
