@@ -3,35 +3,15 @@ using backend.Controllers;
 
 namespace backend.Models;
 
-public class GameData
-{
-    public double ballX { get; set; }
-    public double ballY { get; set; }
-    public int leftScore { get; set; }
-    public int rightScore { get; set; }
-    public double leftPaddleY { get; set; }
-    public double rightPaddleY { get; set; }
-    public string? winner { get; set; }
-
-    public GameData(double ballX, double ballY, int leftScore, int rightScore, double leftPaddleY, double rightPaddleY, string? winner)
-    {
-        this.ballX = ballX;
-        this.ballY = ballY;
-        this.leftScore = leftScore;
-        this.rightScore = rightScore;
-        this.leftPaddleY = leftPaddleY;
-        this.rightPaddleY = rightPaddleY;
-        this.winner = winner;
-    }
-}
+public record GameData(double ballX, double ballY, int leftScore, int rightScore, double leftPaddleY, double rightPaddleY, string? winner);
 
 public class Game
 {
     public static ConcurrentDictionary<Guid, Game> ActiveGames = new ConcurrentDictionary<Guid, Game>();
-    private static int PADDLE_HEIGHT = 15;
-    private static int BALL_RADIUS = 2;
-    private double PADDLE_WIDTH = 0.5;
-    private int MAX_SCORE = 11;
+    private static readonly int PADDLE_HEIGHT = 15;
+    private static readonly int BALL_RADIUS = 2;
+    private readonly double PADDLE_WIDTH = 0.5;
+    private readonly int MAX_SCORE = 11;
     private double ballY = 50 - new Random().NextDouble() * 20;
     private double ballX = 50 - BALL_RADIUS / 2;
     private double vx = 2 * (new Random().NextDouble() < 0.5 ? 1 : -1);
@@ -40,7 +20,7 @@ public class Game
     private int rightScore = 0;
     private double leftPaddleY = 50 - PADDLE_HEIGHT / 2;
     private double rightPaddleY = 50 - PADDLE_HEIGHT / 2;
-    public string? winner;
+    private string? winner;
     private int yBound = 200;
     private Guid player1;
     private Guid player2;

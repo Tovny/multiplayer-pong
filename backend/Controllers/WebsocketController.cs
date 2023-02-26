@@ -11,10 +11,10 @@ namespace backend.Controllers;
 public class WebsocketController : Controller
 {
     public static ConcurrentDictionary<System.Guid, WebSocket> Sockets = new ConcurrentDictionary<System.Guid, WebSocket>();
-    private WebSocket? Socket;
-    private Guid Uuid;
-    private WebSocket? OpponentSocket;
-    private Game? ActiveGame;
+    private WebSocket? socket;
+    private Guid uuid;
+    private WebSocket? opponentSocket;
+    private Game? activeGame;
 
     public async Task Index()
     {
@@ -22,10 +22,10 @@ public class WebsocketController : Controller
         {
             try
             {
-                Uuid = System.Guid.NewGuid();
-                Socket = await HttpContext.WebSockets.AcceptWebSocketAsync();
+                uuid = System.Guid.NewGuid();
+                socket = await HttpContext.WebSockets.AcceptWebSocketAsync();
 
-                Sockets.TryAdd(Uuid, Socket);
+                Sockets.TryAdd(uuid, socket);
 
                 var socketIds = Sockets.Select(socket => socket.Key);
 
@@ -36,15 +36,15 @@ public class WebsocketController : Controller
                         true, CancellationToken.None);
                 }
 
-                while (Socket.State == WebSocketState.Open)
+                while (socket.State == WebSocketState.Open)
                 {
                     var buffer = WebSocket.CreateClientBuffer(1024, 16);
-                    var msg = await Socket.ReceiveAsync(buffer, CancellationToken.None);
+                    var msg = await socket.ReceiveAsync(buffer, CancellationToken.None);
 
                     if (msg.MessageType == WebSocketMessageType.Close)
                     {
-                        await Socket.CloseAsync(WebSocketCloseStatus.NormalClosure, null, CancellationToken.None);
-                        Sockets.TryRemove(Uuid, out var oldSocket);
+                        await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, null, CancellationToken.None);
+                        Sockets.TryRemove(uuid, out var oldSocket);
                     }
 
                     await HandleMessage(buffer, msg.Count);
@@ -71,7 +71,7 @@ public class WebsocketController : Controller
                 {
                     stream.Write(buffer.Array, buffer.Offset, count);
                     var msgString = Encoding.UTF8.GetString(stream.ToArray());
-                    var decoded = JsonSerializer.Deserialize<IPayload>(msgString);
+                    var decoded = JsonSerializer.Deserialize<Payload>(msgString);
 
                     switch (decoded?.action)
                     {
@@ -82,10 +82,10 @@ public class WebsocketController : Controller
                             await HandleAcceptGameRequest(decoded.payload);
                             break;
                         case "leftPaddleChange":
-                            Game.ActiveGames[Uuid].UpdatePaddle("left", decoded.paddle);
+                            Game.ActiveGames[uuid].UpdatePaddle("left", decoded.paddle);
                             break;
                         case "rightPaddleChange":
-                            Game.ActiveGames[Uuid].UpdatePaddle("", decoded.paddle);
+                            Game.ActiveGames[uuid].UpdatePaddle("", decoded.paddle);
                             break;
                     }
                 }
@@ -99,20 +99,20 @@ public class WebsocketController : Controller
 
     private async Task HandleGameRequest(string payload)
     {
-        var data = JsonSerializer.SerializeToUtf8Bytes(new { action = "gameRequest", payload = Uuid.ToString() });
+        var data = JsonSerializer.SerializeToUtf8Bytes(new { action = "gameRequest", payload = uuid.ToString() });
         await Sockets[new Guid(payload)].SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None);
     }
 
     private async Task HandleAcceptGameRequest(string payload)
     {
-        OpponentSocket = Sockets[new Guid(payload)];
-        ActiveGame = new Game(Uuid, new Guid(payload));
+        opponentSocket = Sockets[new Guid(payload)];
+        activeGame = new Game(uuid, new Guid(payload));
 
         var data = JsonSerializer.SerializeToUtf8Bytes(new { action = "startGame" });
-        if (Socket != null)
+        if (socket != null)
         {
-            await OpponentSocket.SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None);
-            await Socket.SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None);
+            await opponentSocket.SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None);
+            await socket.SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None);
         }
     }
 
