@@ -91,8 +91,6 @@ public class WebsocketController : Controller
                     }
                 }
             }
-
-
             catch (Exception ex)
             {
                 var jsonEx = ex.InnerException is JsonException;
@@ -130,16 +128,17 @@ public class WebsocketController : Controller
             if (!Sockets.ContainsKey(player1) || !Sockets.ContainsKey(player2))
             {
                 Game.ActiveGames[player1].StopGame();
-                return;
             }
-
-            var socket = Sockets[player1];
-            var opponentSocket = Sockets[player2];
-            if (socket?.State == WebSocketState.Open && opponentSocket?.State == WebSocketState.Open)
+            else
             {
-                var data = JsonSerializer.SerializeToUtf8Bytes(gameData);
-                await socket.SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None);
-                await opponentSocket.SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None);
+                var socket = Sockets[player1];
+                var opponentSocket = Sockets[player2];
+                if (socket?.State == WebSocketState.Open && opponentSocket?.State == WebSocketState.Open)
+                {
+                    var data = JsonSerializer.SerializeToUtf8Bytes(gameData);
+                    await socket.SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None);
+                    await opponentSocket.SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None);
+                }
             }
         }
         catch (Exception ex)
