@@ -61,14 +61,9 @@ public class Game
 
     private void Update()
     {
-        if (leftScore == MaxScore)
+        if (Math.Max(leftScore, rightScore) == MaxScore)
         {
-            winner = "left";
-            return;
-        }
-        else if (rightScore == MaxScore)
-        {
-            winner = "right";
+            winner = leftScore == MaxScore ? "left" : "right";
             return;
         }
 
