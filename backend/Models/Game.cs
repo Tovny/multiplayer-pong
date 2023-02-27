@@ -39,7 +39,7 @@ public class Game
         {
             leftPaddleY = leftPaddleY + change;
         }
-        else
+        else if (side == "right")
         {
             rightPaddleY = rightPaddleY + change;
         }

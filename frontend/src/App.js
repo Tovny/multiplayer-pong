@@ -73,7 +73,7 @@ export function App() {
   useEffect(() => {
     if (paddleUpdate) {
       const type = host ? "leftPaddleChange" : "rightPaddleChange";
-      subject?.next({ paddle: paddleUpdate, action: type });
+      subject?.next({ action: type, payload: paddleUpdate.toString() });
       setPaddleUpdate(undefined);
     }
   }, [paddleUpdate]);

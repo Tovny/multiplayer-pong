@@ -5,6 +5,7 @@ using System.Net;
 using System.Text.Json;
 using System.Collections.Concurrent;
 using System.Text;
+using System.Globalization;
 
 namespace backend.Controllers;
 
@@ -80,11 +81,12 @@ public class WebsocketController : Controller
                         case "acceptGameRequest":
                             await HandleAcceptGameRequest(decoded.payload);
                             break;
+                        // payload is a string representation of a float in the next two cases
                         case "leftPaddleChange":
-                            Game.ActiveGames[uuid].UpdatePaddle("left", decoded.paddle);
+                            Game.ActiveGames[uuid].UpdatePaddle("left", float.Parse(decoded.payload, CultureInfo.InvariantCulture));
                             break;
                         case "rightPaddleChange":
-                            Game.ActiveGames[uuid].UpdatePaddle("", decoded.paddle);
+                            Game.ActiveGames[uuid].UpdatePaddle("right", float.Parse(decoded.payload, CultureInfo.InvariantCulture));
                             break;
                     }
                 }
