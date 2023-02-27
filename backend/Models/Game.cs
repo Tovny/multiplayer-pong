@@ -8,17 +8,17 @@ public record GameData(double ballX, double ballY, int leftScore, int rightScore
 public class Game
 {
     public static ConcurrentDictionary<Guid, Game> ActiveGames = new ConcurrentDictionary<Guid, Game>();
-    private static readonly int PaddleHeight = 30;
+    private static readonly int PaddleHeight = 15;
     private static readonly int BallRadius = 2;
     private readonly double PaddleWidth = 0.5;
     private readonly int MaxScore = 11;
-    private readonly int yBound = 200;
-    private double leftPaddleY = 50 - PaddleHeight / 2;
-    private double rightPaddleY = 50 - PaddleHeight / 2;
-    private double ballY = 50 - new Random().NextDouble() * 20;
-    private double ballX = 50 - BallRadius / 2;
-    private double vx = 2 * (new Random().NextDouble() < 0.5 ? 1 : -1);
-    private double vy = 3 * (new Random().NextDouble() < 0.5 ? 1 : -1);
+    private int tickDelay;
+    private double leftPaddleY;
+    private double rightPaddleY;
+    private double ballY;
+    private double ballX;
+    private double vx;
+    private double vy;
     private int leftScore = 0;
     private int rightScore = 0;
     private string? winner;
@@ -49,72 +49,79 @@ public class Game
 
     private async void Tick()
     {
+        Reset();
         while (winner == null && !gameOver)
         {
-            await Task.Delay(30);
-            var data = Update();
+            Update();
+            var data = new GameData(ballX, ballY, leftScore, rightScore, leftPaddleY, rightPaddleY, winner);
             WebsocketController.HandleGameUpdate(data, player1, player2);
+            await Task.Delay(tickDelay);
         }
     }
 
-    public GameData Update()
+    private void Update()
     {
+        if (leftScore == MaxScore)
+        {
+            winner = "left";
+            return;
+        }
+        else if (rightScore == MaxScore)
+        {
+            winner = "right";
+            return;
+        }
+
         ballX += vx;
         ballY += vy;
 
-        double leftPaddleStart = PaddleWidth;
-        if (ballX < leftPaddleStart && IsBetweenPaddle(leftPaddleY))
+        if (ballY > 100)
         {
-            ballX = leftPaddleStart;
-            vx = -vx;
+            vy *= -1.025;
+            vx *= 1.025;
+            ballY = 100 - BallRadius / 2;
         }
-
-        double rightPaddleStart = 100 - PaddleWidth;
-        if (ballX > rightPaddleStart && IsBetweenPaddle(rightPaddleY))
+        else if (ballY < 0)
         {
-            ballX = rightPaddleStart;
-            vx = -vx;
+            vy *= -1.025;
+            vx *= 1.025;
+            ballY = 0 + BallRadius / 2;
         }
-
-        if (ballX < 0)
+        else if (ballX + BallRadius / 2 > 100)
         {
-            ballX = 0;
-            vx = -vx;
-            rightScore++;
-
-            if (rightScore == MaxScore)
-            {
-                winner = "right";
-            }
-        }
-
-        int rightBound = 100 - BallRadius;
-        if (ballX >= rightBound)
-        {
-            ballX = rightBound;
-            vx = -vx;
+            ballX = 100 - BallRadius / 2;
             leftScore++;
-
-            if (leftScore == MaxScore)
-            {
-                winner = "left";
-            }
+            Reset();
         }
-
-        if (ballY < 0)
+        else if (ballX - BallRadius / 2 < 0)
         {
-            ballY = 0;
-            vy = -vy;
+            ballX = 0 + BallRadius / 2;
+            rightScore++;
+            Reset();
         }
-
-        int bottomBound = yBound - BallRadius;
-        if (ballY >= bottomBound)
+        else if (ballX - BallRadius / 2 < PaddleWidth && ballY > leftPaddleY && ballY < leftPaddleY + PaddleHeight)
         {
-            ballY = bottomBound;
-            vy = -vy;
-        }
+            vx *= -1;
+            ballX = PaddleWidth;
 
-        return new GameData(ballX, ballY / 2, leftScore, rightScore, leftPaddleY, rightPaddleY, winner);
+        }
+        else if (ballX + BallRadius / 2 > 100 - PaddleWidth && ballY > rightPaddleY && ballY < rightPaddleY + PaddleHeight)
+        {
+            vx *= -1;
+            ballX = 100 - PaddleWidth;
+        }
+    }
+
+    private void Reset()
+    {
+        leftPaddleY = 50 - PaddleHeight / 2;
+        rightPaddleY = 50 - PaddleHeight / 2;
+        ballY = 50 - BallRadius / 2;
+        ballX = 50 - BallRadius / 2;
+        vx = 0.5 * (new Random().NextDouble() < 0.5 ? 1 : -1);
+        vy = 0.75 * (new Random().NextDouble() < 0.5 ? 1 : -1);
+        tickDelay = 500;
+        Task.Delay(tickDelay).ContinueWith((_) => { tickDelay = 30; });
     }
 
     public void StopGame()
@@ -122,10 +129,5 @@ public class Game
         gameOver = true;
         ActiveGames.TryRemove(player1, out var oldGame1);
         ActiveGames.TryRemove(player2, out var oldGame2);
-    }
-
-    private bool IsBetweenPaddle(double paddleTop)
-    {
-        return ballY >= paddleTop && ballY <= paddleTop + PaddleHeight;
     }
 }
