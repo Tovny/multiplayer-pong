@@ -12,7 +12,7 @@ public class WebsocketController : Controller
 {
     public static ConcurrentDictionary<System.Guid, WebSocket> Sockets = new ConcurrentDictionary<System.Guid, WebSocket>();
     private WebSocket? socket;
-    private Guid uuid;
+    private Guid uuid = Guid.NewGuid();
     private WebSocket? opponentSocket;
     private Game? activeGame;
 
@@ -22,14 +22,13 @@ public class WebsocketController : Controller
         {
             try
             {
-                uuid = System.Guid.NewGuid();
                 socket = await HttpContext.WebSockets.AcceptWebSocketAsync();
 
                 Sockets.TryAdd(uuid, socket);
 
                 var socketIds = Sockets.Select(socket => socket.Key);
 
-                foreach (KeyValuePair<System.Guid, WebSocket> socket in Sockets)
+                foreach (KeyValuePair<Guid, WebSocket> socket in Sockets)
                 {
                     var data = JsonSerializer.SerializeToUtf8Bytes(new { action = "playerUpdate", payload = socketIds.Where(s => s != socket.Key) });
                     await socket.Value.SendAsync(data, WebSocketMessageType.Text,
@@ -50,9 +49,9 @@ public class WebsocketController : Controller
                     await HandleMessage(buffer, msg.Count);
                 }
             }
-            catch (Exception err)
+            catch (Exception ex)
             {
-                Console.WriteLine(err);
+                Console.WriteLine(ex);
             }
         }
         else
@@ -90,9 +89,15 @@ public class WebsocketController : Controller
                     }
                 }
             }
-            catch (Exception err)
+
+
+            catch (Exception ex)
             {
-                Console.WriteLine(err);
+                var jsonEx = ex.InnerException is JsonException;
+                if (!jsonEx)
+                {
+                    Console.WriteLine(ex);
+                }
             }
         }
     }
@@ -120,6 +125,12 @@ public class WebsocketController : Controller
     {
         try
         {
+            if (!Sockets.ContainsKey(player1) || !Sockets.ContainsKey(player2))
+            {
+                Game.ActiveGames[player1].StopGame();
+                return;
+            }
+
             var socket = Sockets[player1];
             var opponentSocket = Sockets[player2];
             if (socket?.State == WebSocketState.Open && opponentSocket?.State == WebSocketState.Open)
@@ -129,10 +140,9 @@ public class WebsocketController : Controller
                 await opponentSocket.SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None);
             }
         }
-        catch (Exception err)
+        catch (Exception ex)
         {
-            Game.ActiveGames[player1].StopGame();
-            Console.WriteLine(err);
+            Console.WriteLine(ex);
         }
     }
 }
