@@ -65,18 +65,18 @@ public class WebsocketController : Controller
 
     private static async Task BroadcastPlayers()
     {
-        try
+        var socketKeys = Sockets.Select(socket => socket.Key).Where(key => !Game.ActiveGames.ContainsKey(key));
+        foreach (string username in socketKeys)
         {
-            var socketKeys = Sockets.Select(socket => socket.Key).Where(key => !Game.ActiveGames.ContainsKey(key));
-            foreach (string username in socketKeys)
+            try
             {
                 var data = JsonSerializer.SerializeToUtf8Bytes(new { action = "playerUpdate", payload = socketKeys.Where(key => key != username) });
                 await Sockets[username].SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None);
             }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine(ex);
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex);
+            }
         }
     }
 
@@ -163,6 +163,7 @@ public class WebsocketController : Controller
 
     public static async void HandleGameUpdate(string player1, string player2, GameData gameData, bool gameOver)
     {
+        var data = JsonSerializer.SerializeToUtf8Bytes(new { action = "gameUpdate", payload = gameData });
         foreach (string player in new[] { player1, player2 })
         {
             try
@@ -175,10 +176,8 @@ public class WebsocketController : Controller
                 var socket = Sockets[player];
                 if (socket?.State == WebSocketState.Open)
                 {
-                    var data = JsonSerializer.SerializeToUtf8Bytes(new { action = "gameUpdate", payload = gameData });
                     await socket.SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None);
                 }
-
             }
             catch (Exception ex)
             {
