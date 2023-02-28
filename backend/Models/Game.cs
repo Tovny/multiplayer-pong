@@ -32,6 +32,7 @@ public class Game
         this.player2 = player2;
         ActiveGames.TryAdd(player1, this);
         ActiveGames.TryAdd(player2, this);
+        Reset();
         Tick();
     }
 
@@ -49,13 +50,16 @@ public class Game
 
     private async void Tick()
     {
-        Reset();
-        while (winner == null && !gameOver)
+        while (!gameOver)
         {
-            Update();
             var data = new GameData(ballX, ballY, leftScore, rightScore, leftPaddleY, rightPaddleY, winner);
             WebsocketController.HandleGameUpdate(data, player1, player2);
+            if (winner != null)
+            {
+                break;
+            }
             await Task.Delay(tickDelay);
+            Update();
         }
     }
 
@@ -64,46 +68,43 @@ public class Game
         if (Math.Max(leftScore, rightScore) == MaxScore)
         {
             winner = leftScore == MaxScore ? "left" : "right";
-            return;
         }
-
-        ballX += vx;
-        ballY += vy;
-
-        if (ballY > 100)
+        else if (ballX < PaddleWidth && IsBetweenPaddle(leftPaddleY))
+        {
+            vx *= -1;
+            ballX = PaddleWidth;
+        }
+        else if (ballX + BallRadius > 100 - PaddleWidth && IsBetweenPaddle(rightPaddleY))
+        {
+            vx *= -1;
+            ballX = 100 - PaddleWidth - BallRadius;
+        }
+        else if (ballY + BallRadius > 100)
         {
             vy *= -1.025;
             vx *= 1.025;
-            ballY = 100 - BallRadius / 2;
+            ballY = 100 - BallRadius;
         }
         else if (ballY < 0)
         {
             vy *= -1.025;
             vx *= 1.025;
-            ballY = 0 + BallRadius / 2;
+            ballY = 0;
         }
-        else if (ballX + BallRadius / 2 > 100)
+        else if (ballX + BallRadius > 100)
         {
-            ballX = 100 - BallRadius / 2;
             leftScore++;
             Reset();
         }
-        else if (ballX - BallRadius / 2 < 0)
+        else if (ballX < 0)
         {
-            ballX = 0 + BallRadius / 2;
             rightScore++;
             Reset();
         }
-        else if (ballX - BallRadius / 2 < PaddleWidth && ballY > leftPaddleY && ballY < leftPaddleY + PaddleHeight)
+        else
         {
-            vx *= -1;
-            ballX = PaddleWidth;
-
-        }
-        else if (ballX + BallRadius / 2 > 100 - PaddleWidth && ballY > rightPaddleY && ballY < rightPaddleY + PaddleHeight)
-        {
-            vx *= -1;
-            ballX = 100 - PaddleWidth;
+            ballX += vx;
+            ballY += vy;
         }
     }
 
@@ -116,7 +117,12 @@ public class Game
         vx = 0.5 * (new Random().NextDouble() < 0.5 ? 1 : -1);
         vy = 0.75 * (new Random().NextDouble() < 0.5 ? 1 : -1);
         tickDelay = 500;
-        Task.Delay(tickDelay).ContinueWith((_) => { tickDelay = 30; });
+        Task.Delay(100).ContinueWith((_) => { tickDelay = 30; });
+    }
+
+    private bool IsBetweenPaddle(double paddleY)
+    {
+        return ballY > paddleY && ballY < paddleY + PaddleHeight;
     }
 
     public void StopGame()
