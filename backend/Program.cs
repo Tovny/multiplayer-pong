@@ -7,6 +7,6 @@ app.UseWebSockets();
 
 app.MapControllerRoute(
     name: "default",
-    pattern: "{controller=Websocket}/{action=Index}/{id?}");
+    pattern: "{controller=Websocket}/{action=Index}");
 
 app.Run();
