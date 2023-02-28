@@ -3,11 +3,22 @@ using backend.Controllers;
 
 namespace backend.Models;
 
-public record GameData(double ballX, double ballY, int leftScore, int rightScore, double leftPaddleY, double rightPaddleY, string? winner);
+public record GameData(
+    double ballX,
+    double ballY,
+    int leftScore,
+    int rightScore,
+    double leftPaddleY,
+    double rightPaddleY,
+    string player1,
+    string player2,
+    string? winner,
+    bool? cancelled
+);
 
 public class Game
 {
-    public static ConcurrentDictionary<Guid, Game> ActiveGames = new ConcurrentDictionary<Guid, Game>();
+    public static ConcurrentDictionary<string, Game> ActiveGames = new ConcurrentDictionary<string, Game>();
     private static readonly int PaddleHeight = 15;
     private static readonly int BallRadius = 2;
     private readonly double PaddleWidth = 0.5;
@@ -15,18 +26,18 @@ public class Game
     private int tickDelay;
     private double leftPaddleY;
     private double rightPaddleY;
-    private double ballY;
     private double ballX;
+    private double ballY;
     private double vx;
     private double vy;
     private int leftScore = 0;
     private int rightScore = 0;
+    private string player1;
+    private string player2;
     private string? winner;
-    private Guid player1;
-    private Guid player2;
-    private bool gameOver = false;
+    private bool gameCancelled = false;
 
-    public Game(Guid player1, Guid player2)
+    public Game(string player1, string player2)
     {
         this.player1 = player1;
         this.player2 = player2;
@@ -50,11 +61,11 @@ public class Game
 
     private async void Tick()
     {
-        while (!gameOver)
+        while (true)
         {
-            var data = new GameData(ballX, ballY, leftScore, rightScore, leftPaddleY, rightPaddleY, winner);
-            WebsocketController.HandleGameUpdate(player1, player2, data, data.winner != null);
-            if (winner != null)
+            var data = new GameData(ballX, ballY, leftScore, rightScore, leftPaddleY, rightPaddleY, player1, player2, winner, gameCancelled);
+            WebsocketController.HandleGameUpdate(player1, player2, data, data.winner != null || gameCancelled);
+            if (winner != null || gameCancelled)
             {
                 StopGame();
                 break;
@@ -128,7 +139,7 @@ public class Game
 
     public void StopGame()
     {
-        gameOver = true;
+        gameCancelled = true;
         ActiveGames.TryRemove(player1, out var oldGame1);
         ActiveGames.TryRemove(player2, out var oldGame2);
     }

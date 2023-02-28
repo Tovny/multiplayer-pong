@@ -11,20 +11,23 @@ namespace backend.Controllers;
 
 public class WebsocketController : Controller
 {
-    public static ConcurrentDictionary<System.Guid, WebSocket> Sockets = new ConcurrentDictionary<System.Guid, WebSocket>();
+    public static ConcurrentDictionary<string, WebSocket> Sockets = new ConcurrentDictionary<string, WebSocket>();
+    private string username = string.Empty;
     private WebSocket? socket;
-    private Guid uuid = Guid.NewGuid();
     private WebSocket? opponentSocket;
     private Game? activeGame;
 
-    public async Task Index()
+    [Route("/{username}")]
+    public async Task Index(string username)
     {
-        if (HttpContext.WebSockets.IsWebSocketRequest)
+        var duplicateUsername = Sockets.ContainsKey(username);
+        if (HttpContext.WebSockets.IsWebSocketRequest && !duplicateUsername)
         {
             try
             {
+                this.username = username;
                 socket = await HttpContext.WebSockets.AcceptWebSocketAsync();
-                Sockets.TryAdd(uuid, socket);
+                Sockets.TryAdd(username, socket);
 
                 await BroadcastPlayers();
 
@@ -49,17 +52,31 @@ public class WebsocketController : Controller
         }
         else
         {
-            HttpContext.Response.StatusCode = (int)HttpStatusCode.BadRequest;
+            if (duplicateUsername)
+            {
+                HttpContext.Response.StatusCode = (int)HttpStatusCode.Forbidden;
+            }
+            else
+            {
+                HttpContext.Response.StatusCode = (int)HttpStatusCode.BadRequest;
+            }
         }
     }
 
     private static async Task BroadcastPlayers()
     {
-        var socketIds = Sockets.Select(socket => socket.Key).Where(key => !Game.ActiveGames.ContainsKey(key));
-        foreach (Guid uuid in socketIds)
+        try
         {
-            var data = JsonSerializer.SerializeToUtf8Bytes(new { action = "playerUpdate", payload = socketIds.Where(id => id != uuid) });
-            await Sockets[uuid].SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None);
+            var socketKeys = Sockets.Select(socket => socket.Key).Where(key => !Game.ActiveGames.ContainsKey(key));
+            foreach (string username in socketKeys)
+            {
+                var data = JsonSerializer.SerializeToUtf8Bytes(new { action = "playerUpdate", payload = socketKeys.Where(key => key != username) });
+                await Sockets[username].SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex);
         }
     }
 
@@ -70,11 +87,11 @@ public class WebsocketController : Controller
             if (socket != null)
             {
                 await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, null, CancellationToken.None);
-                Sockets.TryRemove(uuid, out var oldSocket);
+                Sockets.TryRemove(username, out var oldSocket);
             }
-            if (Game.ActiveGames.ContainsKey(uuid))
+            if (Game.ActiveGames.ContainsKey(username))
             {
-                Game.ActiveGames[uuid].StopGame();
+                Game.ActiveGames[username].StopGame();
             }
             await BroadcastPlayers();
         }
@@ -107,18 +124,17 @@ public class WebsocketController : Controller
                             break;
                         // payload is a string representation of a float in the next two cases
                         case "leftPaddleChange":
-                            Game.ActiveGames[uuid].UpdatePaddle("left", float.Parse(decoded.payload, CultureInfo.InvariantCulture));
+                            Game.ActiveGames[username].UpdatePaddle("left", float.Parse(decoded.payload, CultureInfo.InvariantCulture));
                             break;
                         case "rightPaddleChange":
-                            Game.ActiveGames[uuid].UpdatePaddle("right", float.Parse(decoded.payload, CultureInfo.InvariantCulture));
+                            Game.ActiveGames[username].UpdatePaddle("right", float.Parse(decoded.payload, CultureInfo.InvariantCulture));
                             break;
                     }
                 }
             }
             catch (Exception ex)
             {
-                var jsonEx = ex.InnerException is JsonException;
-                if (!jsonEx)
+                if (!(ex.InnerException is JsonException))
                 {
                     Console.WriteLine(ex);
                 }
@@ -128,14 +144,14 @@ public class WebsocketController : Controller
 
     private async Task HandleGameRequest(string payload)
     {
-        var data = JsonSerializer.SerializeToUtf8Bytes(new { action = "gameRequest", payload = uuid.ToString() });
-        await Sockets[new Guid(payload)].SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None);
+        var data = JsonSerializer.SerializeToUtf8Bytes(new { action = "gameRequest", payload = username });
+        await Sockets[payload].SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None);
     }
 
     private async Task HandleAcceptGameRequest(string payload)
     {
-        opponentSocket = Sockets[new Guid(payload)];
-        activeGame = new Game(uuid, new Guid(payload));
+        opponentSocket = Sockets[payload];
+        activeGame = new Game(username, payload);
 
         var data = JsonSerializer.SerializeToUtf8Bytes(new { action = "startGame" });
         if (socket != null)
@@ -145,24 +161,24 @@ public class WebsocketController : Controller
         }
     }
 
-    public static async void HandleGameUpdate(Guid player1, Guid player2, GameData gameData, bool gameOver)
+    public static async void HandleGameUpdate(string player1, string player2, GameData gameData, bool gameOver)
     {
         try
         {
-            if (!Sockets.ContainsKey(player1) || !Sockets.ContainsKey(player2))
+            foreach (string player in new[] { player1, player2 })
             {
-                Game.ActiveGames[player1].StopGame();
-            }
-            else
-            {
-                var socket = Sockets[player1];
-                var opponentSocket = Sockets[player2];
-                if (socket?.State == WebSocketState.Open && opponentSocket?.State == WebSocketState.Open)
+                if (!Sockets.ContainsKey(player) && Game.ActiveGames.ContainsKey(player))
                 {
-                    var data = JsonSerializer.SerializeToUtf8Bytes(gameData);
-                    await socket.SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None);
-                    await opponentSocket.SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None);
+                    Game.ActiveGames[player].StopGame();
+                    return;
                 }
+                var socket = Sockets[player];
+                if (socket?.State == WebSocketState.Open)
+                {
+                    var data = JsonSerializer.SerializeToUtf8Bytes(new { action = "gameUpdate", payload = gameData });
+                    await socket.SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None);
+                }
+
             }
             if (gameOver)
             {

@@ -36,7 +36,7 @@ export function App() {
   const [requestId, setRequestId] = useState();
 
   useEffect(() => {
-    const subject = webSocket("ws://localhost:5125");
+    const subject = webSocket("ws://localhost:5125/" + Math.random());
     setSubject(subject);
     subject.subscribe((data) => {
       if (data.action === "playerUpdate") {
@@ -49,9 +49,9 @@ export function App() {
         setHasGameStarted(true);
         startButtonHandler();
       }
-      if (data.ballX) {
-        dispatch2(data);
-        if (data.winner) {
+      if (data.action === "gameUpdate") {
+        dispatch2(data.payload);
+        if (data.payload.winner || data.payload.cancelled) {
           setHasGameStarted(false);
         }
       }
