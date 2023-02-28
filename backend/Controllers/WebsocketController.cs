@@ -163,9 +163,9 @@ public class WebsocketController : Controller
 
     public static async void HandleGameUpdate(string player1, string player2, GameData gameData, bool gameOver)
     {
-        try
+        foreach (string player in new[] { player1, player2 })
         {
-            foreach (string player in new[] { player1, player2 })
+            try
             {
                 if (!Sockets.ContainsKey(player) && Game.ActiveGames.ContainsKey(player))
                 {
@@ -180,15 +180,15 @@ public class WebsocketController : Controller
                 }
 
             }
-            if (gameOver)
+            catch (Exception ex)
             {
-                await Task.Delay(1000);
-                await BroadcastPlayers();
+                Console.WriteLine(ex);
             }
         }
-        catch (Exception ex)
+        if (gameOver)
         {
-            Console.WriteLine(ex);
+            await Task.Delay(1000);
+            await BroadcastPlayers();
         }
     }
 }
