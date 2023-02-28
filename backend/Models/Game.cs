@@ -53,9 +53,10 @@ public class Game
         while (!gameOver)
         {
             var data = new GameData(ballX, ballY, leftScore, rightScore, leftPaddleY, rightPaddleY, winner);
-            WebsocketController.HandleGameUpdate(data, player1, player2);
+            WebsocketController.HandleGameUpdate(player1, player2, data, data.winner != null);
             if (winner != null)
             {
+                StopGame();
                 break;
             }
             await Task.Delay(tickDelay);
