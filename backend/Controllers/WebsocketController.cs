@@ -53,13 +53,13 @@ public class WebsocketController : Controller
         }
     }
 
-    private async Task BroadcastPlayers()
+    private static async Task BroadcastPlayers()
     {
-        var socketIds = Sockets.Select(socket => socket.Key);
-        foreach (KeyValuePair<Guid, WebSocket> socket in Sockets)
+        var socketIds = Sockets.Select(socket => socket.Key).Where(key => !Game.ActiveGames.ContainsKey(key));
+        foreach (Guid uuid in socketIds)
         {
-            var data = JsonSerializer.SerializeToUtf8Bytes(new { action = "playerUpdate", payload = socketIds.Where(s => s != socket.Key) });
-            await socket.Value.SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None);
+            var data = JsonSerializer.SerializeToUtf8Bytes(new { action = "playerUpdate", payload = socketIds.Where(id => id != uuid) });
+            await Sockets[uuid].SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None);
         }
     }
 
@@ -70,8 +70,12 @@ public class WebsocketController : Controller
             if (socket != null)
             {
                 await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, null, CancellationToken.None);
+                Sockets.TryRemove(uuid, out var oldSocket);
             }
-            Sockets.TryRemove(uuid, out var oldSocket);
+            if (Game.ActiveGames.ContainsKey(uuid))
+            {
+                Game.ActiveGames[uuid].StopGame();
+            }
             await BroadcastPlayers();
         }
         catch (Exception ex)
@@ -99,6 +103,7 @@ public class WebsocketController : Controller
                             break;
                         case "acceptGameRequest":
                             await HandleAcceptGameRequest(decoded.payload);
+                            await BroadcastPlayers();
                             break;
                         // payload is a string representation of a float in the next two cases
                         case "leftPaddleChange":
@@ -140,7 +145,7 @@ public class WebsocketController : Controller
         }
     }
 
-    public static async void HandleGameUpdate(GameData gameData, Guid player1, Guid player2)
+    public static async void HandleGameUpdate(Guid player1, Guid player2, GameData gameData, bool gameOver)
     {
         try
         {
@@ -158,6 +163,11 @@ public class WebsocketController : Controller
                     await socket.SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None);
                     await opponentSocket.SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None);
                 }
+            }
+            if (gameOver)
+            {
+                await Task.Delay(1000);
+                await BroadcastPlayers();
             }
         }
         catch (Exception ex)
