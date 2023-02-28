@@ -24,17 +24,9 @@ public class WebsocketController : Controller
             try
             {
                 socket = await HttpContext.WebSockets.AcceptWebSocketAsync();
-
                 Sockets.TryAdd(uuid, socket);
 
-                var socketIds = Sockets.Select(socket => socket.Key);
-
-                foreach (KeyValuePair<Guid, WebSocket> socket in Sockets)
-                {
-                    var data = JsonSerializer.SerializeToUtf8Bytes(new { action = "playerUpdate", payload = socketIds.Where(s => s != socket.Key) });
-                    await socket.Value.SendAsync(data, WebSocketMessageType.Text,
-                        true, CancellationToken.None);
-                }
+                await BroadcastPlayers();
 
                 while (socket.State == WebSocketState.Open)
                 {
@@ -43,8 +35,7 @@ public class WebsocketController : Controller
 
                     if (msg.MessageType == WebSocketMessageType.Close)
                     {
-                        await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, null, CancellationToken.None);
-                        Sockets.TryRemove(uuid, out var oldSocket);
+                        await CloseConnection();
                     }
 
                     await HandleMessage(buffer, msg.Count);
@@ -52,12 +43,40 @@ public class WebsocketController : Controller
             }
             catch (Exception ex)
             {
+                await CloseConnection();
                 Console.WriteLine(ex);
             }
         }
         else
         {
             HttpContext.Response.StatusCode = (int)HttpStatusCode.BadRequest;
+        }
+    }
+
+    private async Task BroadcastPlayers()
+    {
+        var socketIds = Sockets.Select(socket => socket.Key);
+        foreach (KeyValuePair<Guid, WebSocket> socket in Sockets)
+        {
+            var data = JsonSerializer.SerializeToUtf8Bytes(new { action = "playerUpdate", payload = socketIds.Where(s => s != socket.Key) });
+            await socket.Value.SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None);
+        }
+    }
+
+    private async Task CloseConnection()
+    {
+        try
+        {
+            if (socket != null)
+            {
+                await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, null, CancellationToken.None);
+            }
+            Sockets.TryRemove(uuid, out var oldSocket);
+            await BroadcastPlayers();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex);
         }
     }
 
