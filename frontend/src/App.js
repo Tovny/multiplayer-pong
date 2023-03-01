@@ -3,7 +3,7 @@ import "./App.css";
 import { Ball } from "./components/game/Ball";
 import { Paddle } from "./components/game/Paddle";
 import { Score } from "./components/game/Score";
-import { fromEvent, tap } from "rxjs";
+import { catchError, fromEvent, Subject, takeUntil, tap } from "rxjs";
 import { webSocket } from "rxjs/webSocket";
 import { Players } from "./components/menu/Players";
 
@@ -20,10 +20,12 @@ export function App() {
     {
       leftScore,
       rightScore,
-      leftPaddleY: leftPaddleTop,
-      rightPaddleY: rightPaddleTop,
+      leftPaddleY,
+      rightPaddleY,
       ballX,
       ballY,
+      player1,
+      player2,
     },
     dispatch2,
   ] = useReducer(updateReducer, {});
@@ -34,34 +36,48 @@ export function App() {
   const [host, setHost] = useState(true);
   const [players, setPlayers] = useState([]);
   const [requestId, setRequestId] = useState();
+  const [paddleUpdate, setPaddleUpdate] = useState();
+  const [username, setUsername] = useState();
+  const destroy$ = new Subject();
 
   useEffect(() => {
-    const subject = webSocket("ws://localhost:5125/" + Math.random());
-    setSubject(subject);
-    subject.subscribe((data) => {
-      if (data.action === "playerUpdate") {
-        setPlayers(data.payload);
-      }
-      if (data.action === "gameRequest") {
-        setRequestId(data.payload);
-      }
-      if (data.action === "startGame") {
-        setHasGameStarted(true);
-        startButtonHandler();
-      }
-      if (data.action === "gameUpdate") {
-        dispatch2(data.payload);
-        if (data.payload.winner || data.payload.cancelled) {
-          setHasGameStarted(false);
-        }
-      }
-    });
+    handleInit("Please select a username");
   }, []);
 
-  const [paddleUpdate, setPaddleUpdate] = useState();
+  const handleInit = (msg) => {
+    const username = prompt(msg);
+    if (!username) {
+      return handleInit("Username can't be empty");
+    }
+    setUsername(username);
+    const subject = webSocket("ws://localhost:5125/" + username);
+    setSubject(subject);
+    subject.subscribe({
+      next: (data) => {
+        if (data.action === "playerUpdate") {
+          setPlayers(data.payload);
+        }
+        if (data.action === "gameRequest") {
+          setRequestId(data.payload);
+        }
+        if (data.action === "startGame") {
+          setHasGameStarted(true);
+          startButtonHandler();
+        }
+        if (data.action === "gameUpdate") {
+          dispatch2(data.payload);
+          if (data.payload.winner || data.payload.cancelled) {
+            destroy$.next();
+            setHasGameStarted(false);
+          }
+        }
+      },
+      error: () => handleInit("Username taken, please select another"),
+    });
+  };
 
   const onKeydown = (evt) => {
-    const change = 2;
+    const change = 3;
     if (evt.key === "ArrowUp") {
       setPaddleUpdate(-change);
     }
@@ -88,7 +104,8 @@ export function App() {
       .pipe(
         tap((e) => {
           onKeydown(e);
-        })
+        }),
+        takeUntil(destroy$)
       )
       .subscribe();
   };
@@ -121,27 +138,31 @@ export function App() {
         <div className="Game">
           <Score
             position="left"
-            player={`1${host ? " (You)" : ""}`}
+            players={[player1, player2]}
             total={leftScore}
+            isPlayer={host}
+            username={username}
           />
           <Score
             position="right"
-            player={`2${!host ? " (You)" : ""}`}
+            players={[player1, player2]}
             total={rightScore}
+            isPlayer={!host}
+            username={username}
           />
           <Paddle
             name="p1"
             id="p1"
             tabIndex="0"
             ref={leftPaddleRef}
-            y={leftPaddleTop}
+            y={leftPaddleY}
             position="left"
             isPlayer={host}
           />
           <div className="vl" />
           <Ball x={ballX} y={ballY} ref={ballRef} />
           <Paddle
-            y={rightPaddleTop}
+            y={rightPaddleY}
             position="right"
             ref={rightPaddleRef}
             isPlayer={!host}
