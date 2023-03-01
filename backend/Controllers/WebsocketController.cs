@@ -65,18 +65,18 @@ public class WebsocketController : Controller
 
     private static async Task BroadcastPlayers()
     {
-        var socketKeys = Sockets.Select(socket => socket.Key).Where(key => !Game.ActiveGames.ContainsKey(key));
-        foreach (string username in socketKeys)
+        try
         {
-            try
+            var socketKeys = Sockets.Select(socket => socket.Key).Where(key => !Game.ActiveGames.ContainsKey(key));
+            foreach (string username in socketKeys)
             {
                 var data = JsonSerializer.SerializeToUtf8Bytes(new { action = "playerUpdate", payload = socketKeys.Where(key => key != username) });
                 await Sockets[username].SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None);
             }
-            catch (Exception ex)
-            {
-                Console.WriteLine(ex);
-            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex);
         }
     }
 
@@ -124,10 +124,10 @@ public class WebsocketController : Controller
                             break;
                         // payload is a string representation of a float in the next two cases
                         case "leftPaddleChange":
-                            Game.ActiveGames[username].UpdatePaddle("left", float.Parse(decoded.payload, CultureInfo.InvariantCulture));
+                            Game.ActiveGames[username].UpdatePaddle(Paddles.Left, float.Parse(decoded.payload, CultureInfo.InvariantCulture));
                             break;
                         case "rightPaddleChange":
-                            Game.ActiveGames[username].UpdatePaddle("right", float.Parse(decoded.payload, CultureInfo.InvariantCulture));
+                            Game.ActiveGames[username].UpdatePaddle(Paddles.Right, float.Parse(decoded.payload, CultureInfo.InvariantCulture));
                             break;
                     }
                 }

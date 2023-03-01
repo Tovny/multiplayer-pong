@@ -15,7 +15,7 @@ export const Paddle = forwardRef(
           backgroundColor: isPlayer ? "red" : "#ffffff",
           top: `${y}%`,
           left: position === "left" ? "0" : `${100 - PADDLE_WIDTH}%`,
-          transition: "top 25ms linear",
+          transition: "top 50ms linear",
         }}
         ref={ref}
       ></div>

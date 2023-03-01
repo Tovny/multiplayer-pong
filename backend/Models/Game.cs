@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using backend.Controllers;
+using System.Reflection;
 
 namespace backend.Models;
 
@@ -16,6 +17,12 @@ public record GameData(
     bool? cancelled
 );
 
+public enum Paddles
+{
+    Left,
+    Right
+}
+
 public class Game
 {
     public static ConcurrentDictionary<string, Game> ActiveGames = new ConcurrentDictionary<string, Game>();
@@ -23,9 +30,10 @@ public class Game
     private static readonly int BallRadius = 2;
     private readonly double PaddleWidth = 0.5;
     private readonly int MaxScore = 11;
+    private readonly double vMultiplier = 1.1;
     private int tickDelay;
-    private double leftPaddleY;
-    private double rightPaddleY;
+    private double leftPaddleY { get; set; }
+    private double rightPaddleY { get; set; }
     private double ballX;
     private double ballY;
     private double vx;
@@ -35,6 +43,7 @@ public class Game
     private string player1;
     private string player2;
     private string? winner;
+    private bool active;
     private bool gameCancelled = false;
 
     public Game(string player1, string player2)
@@ -47,15 +56,28 @@ public class Game
         Tick();
     }
 
-    public void UpdatePaddle(string side, double change)
+    public void UpdatePaddle(Paddles paddle, double change)
     {
-        if (side == "left")
+        if (active)
         {
-            leftPaddleY = leftPaddleY + change;
-        }
-        else if (side == "right")
-        {
-            rightPaddleY = rightPaddleY + change;
+            var selectedPaddle = this.GetType().GetProperty(
+                paddle == Paddles.Left ? "leftPaddleY" : "rightPaddleY",
+                BindingFlags.NonPublic | BindingFlags.Instance
+            );
+            var currValue = (double?)selectedPaddle?.GetValue(this);
+            var newVal = currValue + change;
+            if (newVal < 0)
+            {
+                selectedPaddle?.SetValue(this, 0);
+            }
+            else if (newVal > 100 - PaddleHeight)
+            {
+                selectedPaddle?.SetValue(this, 100 - PaddleHeight);
+            }
+            else
+            {
+                selectedPaddle?.SetValue(this, newVal);
+            }
         }
     }
 
@@ -93,14 +115,14 @@ public class Game
         }
         else if (ballY + BallRadius > 100)
         {
-            vy *= -1.025;
-            vx *= 1.025;
+            vy *= -vMultiplier;
+            vx *= vMultiplier;
             ballY = 100 - BallRadius;
         }
         else if (ballY < 0)
         {
-            vy *= -1.025;
-            vx *= 1.025;
+            vy *= -vMultiplier;
+            vx *= vMultiplier;
             ballY = 0;
         }
         else if (ballX + BallRadius > 100)
@@ -129,7 +151,9 @@ public class Game
         vx = 0.5 * (new Random().NextDouble() < 0.5 ? 1 : -1);
         vy = 0.75 * (new Random().NextDouble() < 0.5 ? 1 : -1);
         tickDelay = 500;
-        Task.Delay(100).ContinueWith((_) => { tickDelay = 30; });
+        active = false;
+        Task.Delay(100).ContinueWith((_) => { tickDelay = 1000 / 45; });
+        Task.Delay(500).ContinueWith((_) => { active = true; });
     }
 
     private bool IsBetweenPaddle(double paddleY)
